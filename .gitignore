@@ -1,3 +1,6 @@
 .venv/
 venv/
 env/
+*.csv
+*.gnucash
+__pycache__/
