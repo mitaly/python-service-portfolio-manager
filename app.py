@@ -3,21 +3,33 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from prophet import Prophet
 import numpy as np
-from piecash import open_book
 import asyncio
 import aio_pika
 import json
 import os
 from datetime import datetime
 import pika
+from functools import partial
+import warnings
+from sqlalchemy.exc import SAWarning
+
+# Suppress the specific warning
+warnings.filterwarnings(
+    "ignore",
+    category=SAWarning,
+    message=r"relationship 'Budget\.recurrence' will copy column budgets\.guid to column recurrences\.obj_guid.*"
+)
+
+# Only import piecash *after* suppressing warnings
+import piecash
 async def main():
-    rabbitmq_host = '192.168.1.30' 
+    rabbitmq_host = '192.168.1.8' 
     rabbitmq_username = 'shubham'
     rabbitmq_password = 'shubham'
     rabbitmq_port = 5672
 
     async_connection = await aio_pika.connect_robust(
-        f"amqp://shubham:shubham@{rabbitmq_host}/"
+        f"amqp://shubham:shubham@{rabbitmq_host}:5672/"
     )
   
     credentials = pika.PlainCredentials(rabbitmq_username, rabbitmq_password)
@@ -35,7 +47,7 @@ async def main():
         # Limit prefetch count for concurrency control
         await channel.set_qos()
         queue = await channel.declare_queue(
-            "hello",
+            "portfolio-request",
             durable=True
         )
 
@@ -66,9 +78,15 @@ async def handle_message(message: aio_pika.IncomingMessage, output_channel):
             print(f"[!] Failed to process message: {e}")
             message.nack(requeue=False)
 
+def get_descendents(account):
+  all_accounts = [account];
+  for subaccount in account.children:
+    all_accounts.extend(get_descendents(subaccount));
+  return all_accounts;
+
 def analyse_trend(data,output_channel):
     # piecash can only read a gnucash file stored in sqlite format not xml or compressed.
-    with open_book("sqlitegnucash.gnucash", open_if_lock=True) as mybook:        # Iterate over all accounts
+    with piecash.open_book(data['path'], open_if_lock=True) as mybook:        # Iterate over all accounts
         account_name=data['accountName']
         start_date_str=data['startDate']
         end_date_str=data['endDate']
@@ -77,11 +95,16 @@ def analyse_trend(data,output_channel):
         if not account:
             print(f"Account {account_name} not found.");
             exit();
+        all_accounts = get_descendents(account);
+        all_splits = []
+        for acc in all_accounts:
+            all_splits.extend(acc.splits);
+  
         start_date = datetime.strptime(start_date_str, "%d-%m-%Y").date();
         end_date = datetime.strptime(end_date_str, "%d-%m-%Y").date();
 
         rows =[]
-        for split in account.splits:
+        for split in all_splits:
             txn = split.transaction
             txn_date = txn.post_date
 
@@ -111,6 +134,16 @@ def analyse_trend(data,output_channel):
         forecast_output_path = f"{job_id}_forecast_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"
         forecast_df.to_csv(forecast_output_path, index=False)
         print("Forecast file saved to ", forecast_output_path)
+
+        df_summed['month'] = df_summed['ds'].dt.to_period('M');
+        monthly_totals = df_summed.groupby('month')['y'].sum()
+        average_monthly_expense = monthly_totals.mean()
+        monthly_totals.to_csv(f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv", index=True);
+
+        df_summed['week'] = df_summed['ds'].dt.to_period('W');
+        weekly_totals = df_summed.groupby('week')['y'].sum()
+        average_weekly_expense = weekly_totals.mean()
+        weekly_totals.to_csv(f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv", index=True);
 
         forecast_df['month'] = forecast_df['ds'].dt.to_period('M')
         monthly_trend = forecast_df.groupby('month')['trend'].mean().reset_index()
@@ -162,20 +195,22 @@ def analyse_trend(data,output_channel):
                 });
         
         top_positive_insights = sorted([i for i in insights if i['pct_change'] > 0 ], 
-        key=lambda x: x['pct_change'], reverse=True)[:3];
+        key=lambda x: x['pct_change'], reverse=True)[:1];
 
         top_negative_insights = sorted([i for i in insights if i['pct_change'] < 0 ],
-        key=lambda x: x['pct_change'])[:3];
+        key=lambda x: x['pct_change'])[:1];
 
-        print("Top Positive Insights: ", top_positive_insights.to_string());
-        print("Top Negative Insights: ", top_negative_insights.to_string());
+        print("Top Positive Insights: ", top_positive_insights);
+        print("Top Negative Insights: ", top_negative_insights);
 
         response_body = {
             "forecast_file_path": forecast_output_path,
             "monthly_trend_file_path": monthly_trend_output_path,
             "job_id": job_id,
             "top_positive_insights": top_positive_insights,
-            "top_negative_insights": top_negative_insights
+            "top_negative_insights": top_negative_insights,
+            "average_monthly_expense": average_monthly_expense,
+            "average_weekly_expense": average_weekly_expense
         };
         output_channel.basic_publish(exchange='', routing_key='portfolio-response',
         body=json.dumps(response_body));

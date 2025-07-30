@@ -19,12 +19,14 @@ channel = connection.channel()
 # channel.queue_declare(queue="hello")
 
 body = {
-    "filePath": "D:\Projects\python-service-portfolio-manager\h.csv",
-    "startDate": "2025-01-02",
-    "endDate": "2025-03-01"
+    "path": "sqlite-mitaly-gnucash.gnucash",
+    "accountName":"Expenses",
+    "startDate":"01-01-2025",
+    "endDate":"30-06-2025",
+    "job_id":"12345"
 }
 channel.basic_publish(exchange='',
-routing_key='hello',
+routing_key='portfolio-request',
 body=json.dumps(body))
 
 print('Sent message')
