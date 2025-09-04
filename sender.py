@@ -1,5 +1,4 @@
 import asyncio
-import aio_pika
 import json
 import pika
 rabbitmq_host = '192.168.1.30' 

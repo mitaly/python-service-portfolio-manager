@@ -23,7 +23,7 @@ warnings.filterwarnings(
 # Only import piecash *after* suppressing warnings
 import piecash
 async def main():
-    rabbitmq_host = '192.168.1.8' 
+    rabbitmq_host = 'humara.pi' 
     rabbitmq_username = 'shubham'
     rabbitmq_password = 'shubham'
     rabbitmq_port = 5672
@@ -100,8 +100,8 @@ def analyse_trend(data,output_channel):
         for acc in all_accounts:
             all_splits.extend(acc.splits);
   
-        start_date = datetime.strptime(start_date_str, "%d-%m-%Y").date();
-        end_date = datetime.strptime(end_date_str, "%d-%m-%Y").date();
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date();
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date();
 
         rows =[]
         for split in all_splits:
@@ -138,12 +138,14 @@ def analyse_trend(data,output_channel):
         df_summed['month'] = df_summed['ds'].dt.to_period('M');
         monthly_totals = df_summed.groupby('month')['y'].sum()
         average_monthly_expense = monthly_totals.mean()
-        monthly_totals.to_csv(f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv", index=True);
+        monthly_totals_output_path = f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv";
+        monthly_totals.to_csv(monthly_totals_output_path, index=True);
 
         df_summed['week'] = df_summed['ds'].dt.to_period('W');
         weekly_totals = df_summed.groupby('week')['y'].sum()
         average_weekly_expense = weekly_totals.mean()
-        weekly_totals.to_csv(f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv", index=True);
+        weekly_totals_output_path = f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv";
+        weekly_totals.to_csv(weekly_totals_output_path, index=True);
 
         forecast_df['month'] = forecast_df['ds'].dt.to_period('M')
         monthly_trend = forecast_df.groupby('month')['trend'].mean().reset_index()
@@ -209,6 +211,8 @@ def analyse_trend(data,output_channel):
             "job_id": job_id,
             "top_positive_insights": top_positive_insights,
             "top_negative_insights": top_negative_insights,
+            "monthly_totals_file_path": monthly_totals_output_path,
+            "weekly_totals_file_path": weekly_totals_output_path,
             "average_monthly_expense": average_monthly_expense,
             "average_weekly_expense": average_weekly_expense
         };
