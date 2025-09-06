@@ -4,3 +4,4 @@ env/
 *.csv
 *.gnucash
 __pycache__/
+*.sqlite
