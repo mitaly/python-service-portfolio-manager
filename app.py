@@ -22,18 +22,18 @@ warnings.filterwarnings(
 
 # Only import piecash *after* suppressing warnings
 import piecash
-async def main():
-    rabbitmq_host = 'humara.pi' 
-    rabbitmq_username = 'shubham'
-    rabbitmq_password = 'shubham'
-    rabbitmq_port = 5672
 
+rabbitmq_host = 'humara.pi' 
+rabbitmq_username = 'shubham'
+rabbitmq_password = 'shubham'
+rabbitmq_port = 5672
+credentials = pika.PlainCredentials(rabbitmq_username, rabbitmq_password)
+
+async def main():
     async_connection = await aio_pika.connect_robust(
         f"amqp://shubham:shubham@{rabbitmq_host}:5672/"
     )
   
-    credentials = pika.PlainCredentials(rabbitmq_username, rabbitmq_password)
-
     sync_connection = pika.BlockingConnection(pika.ConnectionParameters(
         host=rabbitmq_host,
         port=rabbitmq_port,
@@ -59,12 +59,23 @@ async def main():
 
         # keep the program alive
         await asyncio.Event().wait()
-    # analyse_trend({
-    #     "accountName":"Expenses:Food Essentials",
-    #     "startDate":"21-01-2024",
-    #     "endDate":"31-01-2025",
-    #     "job_id":"12345"
-    # }, output_channel);
+
+def single_test_run():
+    sync_connection = pika.BlockingConnection(pika.ConnectionParameters(
+        host=rabbitmq_host,
+        port=rabbitmq_port,
+        credentials=credentials,
+        virtual_host='/' # Default virtual host, change if using a different one
+    ))
+    output_channel = sync_connection.channel()
+   
+    analyse_trend({
+        "path": "D:/Projects/gnucash-svelte/static/uploads/sqlite/1.sqlite",
+        "accountName":"Expenses",
+        "startDate":"2024-08-01",
+        "endDate":"2025-08-01",
+        "jobId":"123475"
+        }, output_channel);
 
 async def handle_message(message: aio_pika.IncomingMessage, output_channel):
     async with message.process():  # acknowledges or NACKs automatically
@@ -122,7 +133,7 @@ def analyse_trend(data,output_channel):
         raw_df.sort_values("ds", inplace=True)
         print(raw_df.head(10).to_string())
         #TODO: add missing months, dates in between according to calendar 
-        job_id = data["job_id"]
+        job_id = data["jobId"]
 
         raw_df['ds'] = pd.to_datetime(raw_df['ds'], format='%d-%m-%Y')
         df_summed = raw_df.groupby(['ds'])['y'].sum().reset_index()
@@ -131,20 +142,27 @@ def analyse_trend(data,output_channel):
         model.fit(df_summed)
         forecast_df = model.predict(df_summed)
         now = datetime.now()
-        forecast_output_path = f"{job_id}_forecast_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+
+        output_dir = os.path.join("outputs", job_id)   # e.g. outputs/12345
+        os.makedirs(output_dir, exist_ok=True)         # creates if not exists
+
+        forecast_output_path =  os.path.abspath(os.path.join(output_dir,
+         f"{job_id}_forecast_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
         forecast_df.to_csv(forecast_output_path, index=False)
         print("Forecast file saved to ", forecast_output_path)
 
         df_summed['month'] = df_summed['ds'].dt.to_period('M');
         monthly_totals = df_summed.groupby('month')['y'].sum()
         average_monthly_expense = monthly_totals.mean()
-        monthly_totals_output_path = f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv";
+        monthly_totals_output_path =  os.path.abspath(os.path.join(output_dir,
+         f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
         monthly_totals.to_csv(monthly_totals_output_path, index=True);
 
         df_summed['week'] = df_summed['ds'].dt.to_period('W');
         weekly_totals = df_summed.groupby('week')['y'].sum()
         average_weekly_expense = weekly_totals.mean()
-        weekly_totals_output_path = f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv";
+        weekly_totals_output_path =  os.path.abspath(os.path.join(output_dir,
+         f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
         weekly_totals.to_csv(weekly_totals_output_path, index=True);
 
         forecast_df['month'] = forecast_df['ds'].dt.to_period('M')
@@ -163,7 +181,8 @@ def analyse_trend(data,output_channel):
         for n in unique_months_window:   
             monthly_trend[f'rolling_trend_{n}_month'] = monthly_trend['trend'].rolling(window=n).mean()
 
-        monthly_trend_output_path = f"{job_id}_monthly_trend_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+        monthly_trend_output_path =  os.path.abspath(os.path.join(output_dir,
+                    f"{job_id}_monthly_trend_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
         monthly_trend.to_csv(monthly_trend_output_path, index=False)
         print("Monthly trend saved to ", monthly_trend_output_path)
 
@@ -320,5 +339,6 @@ def summarize_catgeory_trends(category, forecast_df):
     return response;
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    single_test_run()
     
