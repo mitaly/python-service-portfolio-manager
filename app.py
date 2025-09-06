@@ -74,7 +74,8 @@ def single_test_run():
         "accountName":"Expenses",
         "startDate":"2024-08-01",
         "endDate":"2025-08-01",
-        "jobId":"123475"
+        "jobId":"123475",
+        "userId":1
         }, output_channel);
 
 async def handle_message(message: aio_pika.IncomingMessage, output_channel):
@@ -225,6 +226,7 @@ def analyse_trend(data,output_channel):
         print("Top Negative Insights: ", top_negative_insights);
 
         response_body = {
+            "user_id": data.get("userId", "unknown"),
             "forecast_file_path": forecast_output_path,
             "monthly_trend_file_path": monthly_trend_output_path,
             "job_id": job_id,
@@ -339,6 +341,6 @@ def summarize_catgeory_trends(category, forecast_df):
     return response;
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    single_test_run()
+    asyncio.run(main())
+    # single_test_run()
     
