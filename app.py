@@ -28,6 +28,7 @@ rabbitmq_username = 'shubham'
 rabbitmq_password = 'shubham'
 rabbitmq_port = 5672
 credentials = pika.PlainCredentials(rabbitmq_username, rabbitmq_password)
+generated_output_folder_path = "/Users/mitalysen/Documents/GitHub/gnucash-svelte/static/outputs"
 
 async def main():
     async_connection = await aio_pika.connect_robust(
@@ -144,11 +145,11 @@ def analyse_trend(data,output_channel):
         forecast_df = model.predict(df_summed)
         now = datetime.now()
 
-        output_dir = os.path.join("outputs", job_id)   # e.g. outputs/12345
+        output_dir = os.path.join(generated_output_folder_path, job_id)   # e.g. outputs/12345
         os.makedirs(output_dir, exist_ok=True)         # creates if not exists
 
         forecast_output_path =  os.path.abspath(os.path.join(output_dir,
-         f"{job_id}_forecast_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
+         f"forecast_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
         forecast_df.to_csv(forecast_output_path, index=False)
         print("Forecast file saved to ", forecast_output_path)
 
@@ -156,14 +157,14 @@ def analyse_trend(data,output_channel):
         monthly_totals = df_summed.groupby('month')['y'].sum()
         average_monthly_expense = monthly_totals.mean()
         monthly_totals_output_path =  os.path.abspath(os.path.join(output_dir,
-         f"{job_id}_monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
+         f"monthly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
         monthly_totals.to_csv(monthly_totals_output_path, index=True);
 
         df_summed['week'] = df_summed['ds'].dt.to_period('W');
         weekly_totals = df_summed.groupby('week')['y'].sum()
         average_weekly_expense = weekly_totals.mean()
         weekly_totals_output_path =  os.path.abspath(os.path.join(output_dir,
-         f"{job_id}_weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
+         f"weekly_totals_{now.strftime('%Y%m%d_%H%M%S')}.csv"));
         weekly_totals.to_csv(weekly_totals_output_path, index=True);
 
         forecast_df['month'] = forecast_df['ds'].dt.to_period('M')
@@ -183,7 +184,7 @@ def analyse_trend(data,output_channel):
             monthly_trend[f'rolling_trend_{n}_month'] = monthly_trend['trend'].rolling(window=n).mean()
 
         monthly_trend_output_path =  os.path.abspath(os.path.join(output_dir,
-                    f"{job_id}_monthly_trend_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
+                    f"monthly_trend_output_{now.strftime('%Y%m%d_%H%M%S')}.csv"))
         monthly_trend.to_csv(monthly_trend_output_path, index=False)
         print("Monthly trend saved to ", monthly_trend_output_path)
 
@@ -227,13 +228,13 @@ def analyse_trend(data,output_channel):
 
         response_body = {
             "user_id": data.get("userId", "unknown"),
-            "forecast_file_path": forecast_output_path,
-            "monthly_trend_file_path": monthly_trend_output_path,
             "job_id": job_id,
+            "forecast_file_path": forecast_output_path.split("outputs/", 1)[1],
+            "monthly_trend_file_path": monthly_trend_output_path.split("outputs/", 1)[1],
+            "monthly_totals_file_path": monthly_totals_output_path.split("outputs/", 1)[1],
+            "weekly_totals_file_path": weekly_totals_output_path.split("outputs/", 1)[1],
             "top_positive_insights": top_positive_insights,
             "top_negative_insights": top_negative_insights,
-            "monthly_totals_file_path": monthly_totals_output_path,
-            "weekly_totals_file_path": weekly_totals_output_path,
             "average_monthly_expense": average_monthly_expense,
             "average_weekly_expense": average_weekly_expense
         };
